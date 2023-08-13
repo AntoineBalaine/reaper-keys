@@ -17,6 +17,7 @@ local custom_actions = {
 	harmonizer = require("custom_actions.harmonizer"),
 	pasteRhythm = require("custom_actions.pasteRhythm"),
 	MFT = require("custom_actions.MFT"),
+	MFT2 = require("custom_actions.MFT2"),
 }
 
 function custom_actions.clearTimeSelection()

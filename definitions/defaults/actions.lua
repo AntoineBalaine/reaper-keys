@@ -865,7 +865,7 @@ return {
 	SelectPointsTimeSelection = 40330,
 	InsertToggleAtTimeSelection = { custom.envelope.insertToggleAtTimeSelection },
 	InvertSelectedPoints = 40334,
-	devAction = { custom.MFT.create_fx_map },
+	devAction = { custom.MFT2.create_fx_map },
 	VrtlBtn1 = { custom.midi_controller.devAction },
 	VrtlBtn2 = { custom.midi_controller.devAction },
 	VrtlBtn3 = {
