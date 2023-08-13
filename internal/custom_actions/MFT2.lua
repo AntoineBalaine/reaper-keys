@@ -3,7 +3,7 @@
 local utils = require("custom_actions.utils")
 local serpent = require("serpent")
 local REALERN_PARAMS = 100
-
+ENCODERS_PER_ROW = 4
 local Color_list = {
   "10", -- cyan
   "45", -- yellow
@@ -153,7 +153,102 @@ local function LOC(ENCODERS_COUNT)
     end
   end
 
-  local ROWS = { "OSC_MOD", "ENV_MOD", "FILT_MOD", "LFO_MOD" }
+  ---@param mod_name string
+  ---@param row_idx integer -- 0-indexed
+  ---@param target_interval number[]
+  function L:CREATE_CYCLEBTN(mod_name, row_idx, target_interval, realearn_alt_idx)
+    local cycle_btn = createIdleMapping()
+    cycle_btn.feedback_enabled = false
+    cycle_btn.name = mod_name .. "_cycl"
+    local page_idx = ((self.pageIdx / 100) - 0.001)
+    if page_idx < 0 then page_idx = 0 end
+    cycle_btn.activation_condition = {
+      kind = "Bank",
+      parameter = 0, -- paging is all on param 0
+      bank_index = self.pageIdx,
+    }
+    cycle_btn.source = {
+      kind = "Virtual",
+      id = (row_idx - 1) * ENCODERS_PER_ROW,
+      character = "Button",
+    }
+    cycle_btn.glue = {
+      absolute_mode = "IncrementalButton",
+      target_interval = target_interval,
+      wrap = true,
+      step_size_interval = { 0.01, 0.05 },
+    }
+    cycle_btn.target = {
+      kind = "FxParameterValue",
+      parameter = {
+        address = "ById",
+        index = realearn_alt_idx,
+      },
+      poll_for_feedback = false,
+    }
+    return cycle_btn
+  end
+
+  function L:create_synth_map()
+    local synth_layout = {
+      { title = "OSC",  alts = { "osc1", "osc2", "sub", "noise" },     opts = { "oct", "fine", "wave", "semi" } },
+      { title = "ENV",  alts = { "FILT_ENV", "AMP_ENV", "PITCH_ENV" }, opts = { "A", "D", "S", "R" } },
+      { title = "FILT", alts = { "filt1", "filt2_hp" },                opts = { "cut", "res", "steep", "type" } },
+      { title = "LFO",  alts = { "lfo1", "lfo2" },                     opts = { "rate", "amt", "wave", "dest" } }
+    }
+    for row_idx, val in ipairs(synth_layout) do
+      local realearn_alt_idx = L:new_param()
+      local cycle_btn = L:CREATE_CYCLEBTN(val.title, row_idx, { 0, (#val.alts - 1) / 100 }, realearn_alt_idx)
+
+      table.insert(self.data[self.pageIdx].maps, cycle_btn)
+      for alt_idx, alt in ipairs(val.alts) do
+        local alt_color = L:increment_color()
+        for col_idx, opt in ipairs(val.opts) do
+          local param = createIdleMapping()
+          local encoder_idx = (row_idx - 1) * ENCODERS_PER_ROW + (col_idx - 1)
+          param.name = alt .. "_" .. opt
+          param.source = {
+            kind = "Virtual",
+            id = encoder_idx,
+          }
+          param.on_activate = {
+            send_midi_feedback = {
+              {
+                kind = "Raw",
+                message = "B1 " ..
+                    utils.toHex(encoder_idx) .. " " .. alt_color
+
+              },
+            },
+          }
+          local bnk_low = (self.pageIdx / 100) - 0.001
+          if bnk_low < 0 then bnk_low = 0 end
+          local bnk_hi = (self.pageIdx / 100) + 0.009
+          local p_idx = "p[" .. 0 .. "]"                    -- which bank/page we're in, synth page is 0
+          local r_alt_idx = "p[" .. realearn_alt_idx .. "]" -- modifier index
+          local alt_idx_val = (alt_idx - 1) / 100
+          local alt_idx_val_low = alt_idx_val == 0 and alt_idx_val or alt_idx_val - 0.001
+          if alt_idx_val_low < 0 then alt_idx_val_low = 0 end
+          local alt_idx_val_hi = alt_idx_val + 0.009
+          -- "p[0] > 0.009 && p[0] < 0.019 && p[1] > 0.009 && p[1] < 0.019"
+          -- the way that's written looks pretty stupid,
+          -- but realearn doesn't read p[0]==0.001 as true: floating point numbers are inaccurate…
+          ---@type string
+          local condition = p_idx .. " >= " ..
+              bnk_low ..
+              " && " ..
+              p_idx ..
+              " < " .. bnk_hi .. " && " .. r_alt_idx .. " >= " .. alt_idx_val_low .. " && " .. r_alt_idx .. " < " ..
+              alt_idx_val_hi
+          param.activation_condition = {
+            kind = "Expression",
+            condition = condition
+          }
+          table.insert(self.data[self.pageIdx].maps, param)
+        end
+      end
+    end
+  end
 
   function L:create_OSC_MOD()
     local OscOpts = {
@@ -341,7 +436,8 @@ function Main_compartment_mapper.Map_selected_fx_in_visible_chain(ENCODERS_COUNT
   ---@return Mapping[] fx
   local function build()
     local bnks = LOC(ENCODERS_COUNT)
-    bnks:create_OSC_MOD()
+    bnks:create_synth_map()
+    -- bnks:create_OSC_MOD()
     bnks:fill_left_over_space_in_last_bank_with_dummies()
     bnks:add_dummies_page()
     return bnks:get_bnks(), bnks:get_maps()
