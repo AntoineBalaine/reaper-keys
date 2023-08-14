@@ -171,7 +171,7 @@ local function LOC(ENCODERS_COUNT)
   ---@param mod_name string
   ---@param row_idx integer -- 0-indexed
   ---@param target_interval number[]
-  function L:CREATE_CYCLEBTN(mod_name, row_idx, target_interval, realearn_alt_idx)
+  function L:create_cycleBtn(mod_name, row_idx, target_interval, realearn_alt_idx)
     local cycle_btn = createIdleMapping()
     cycle_btn.feedback_enabled = false
     cycle_btn.name = mod_name .. "_cycl"
@@ -204,29 +204,96 @@ local function LOC(ENCODERS_COUNT)
     return cycle_btn
   end
 
+  function L:format_low_hi(val)
+    local low = (val / 100) - 0.001
+    if low < 0 then low = 0 end
+    local hi = (val / 100) + 0.009
+    return low, hi
+  end
+
+  function L:format_modifier_idx(val)
+    return "p[" .. val .. "]" -- modifier index
+  end
+
+  function L:format_expression_condition(bnk, modifier)
+    local mod_low, mod_hi = L:format_low_hi(modifier)
+    local b_idx = L:format_modifier_idx(bnk) -- which bank/page we're in, synth page is 0
+    return b_idx .. " >= " .. mod_low .. " && " .. b_idx .. " < " .. mod_hi
+  end
+
+  --- `p[0] > 0.009 && p[0] < 0.019 && p[1] > 0.009 && p[1] < 0.019`
+  ---
+  --- The way that's written looks awkward,
+  --- but realearn can't read `p[0]==0.001` as `true`: floating point numbers are inaccurate…
+  ---@param bnk_n_modifier {bnk: integer, modifier: integer}[]
+  function L:format_condition(bnk_n_modifier)
+    local expressions = {}
+    for i, v in ipairs(bnk_n_modifier) do
+      table.insert(expressions, L:format_expression_condition(v.bnk, v.modifier))
+    end
+    return table.concat(expressions, " && ")
+  end
+
+  ---@param encoder_idx integer
+  ---@param color string
+  function L:format_color(encoder_idx, color)
+    return "B1 " .. utils.toHex(encoder_idx) .. " " .. color
+  end
+
   function L:create_synth_map()
     local synth_layout = {
-      { title = "OSC",  alts = { "osc1", "osc2", "sub", "noise" },     opts = { "oct", "fine", "wave", "semi" },
-                                                                                                                   colors = {
-          Color_enum.navy, Color_enum.pink, Color_enum.oliveGreen, Color_enum.turquoise } },
-      { title = "ENV",  alts = { "FILT_ENV", "AMP_ENV", "PITCH_ENV" }, opts = { "A", "D", "S", "R" },
-                                                                                                                   colors = {
-          Color_enum.red, Color_enum.yellow, Color_enum.turquoise } },
-      { title = "FILT", alts = { "filt1", "filt2_hp" },                opts = { "cut", "res", "steep", "type" },
-                                                                                                                   colors = {
-          Color_enum.red, Color_enum.purple } },
-      { title = "LFO",  alts = { "lfo1", "lfo2" },                     opts = { "rate", "amt", "wave", "dest" },
-                                                                                                                   colors = {
-          Color_enum.skyBlue, Color_enum.navy } }
+      {
+        title = "OSC",
+        alts = { "osc1", "osc2", "sub", "noise" },
+        opts = { "oct", "fine", "wave", "volume" },
+        colors = {
+          Color_enum.navy, Color_enum.yellow, Color_enum.oliveGreen, Color_enum.turquoise },
+        noise = {
+          opts = { "white", "pink" },
+          colors = {
+            Color_enum.turquoise, Color_enum.pink }
+        }
+      },
+      {
+        title = "ENV",
+        alts = { "FILT_ENV", "AMP_ENV", "PITCH_ENV" },
+        opts = { "A", "D", "S", "R" },
+        colors = {
+          Color_enum.red, Color_enum.yellow, Color_enum.turquoise }
+      },
+      {
+        title = "FILT",
+        alts = { "filt1", "filt2_hp" },
+        opts = { "cut", "res", "steep", "type" },
+        colors = {
+          Color_enum.red, Color_enum.purple }
+      },
+      {
+        title = "LFO",
+        alts = { "lfo1", "lfo2" },
+        opts = { "rate", "amt", "wave", "nothg_yet" },
+        colors = { Color_enum.skyBlue, Color_enum.navy },
+        amt = {
+          colors = {
+            Color_enum.red, Color_enum.yellow, Color_enum.turquoise, Color_enum.purple },
+          opts = { "filt1_cut", "amp", "pitch", "filt2_cut" }
+        }
+      }
     }
-    for row_idx, val in ipairs(synth_layout) do
-      local realearn_alt_idx = L:new_param()
-      local cycle_btn = L:CREATE_CYCLEBTN(val.title, row_idx, { 0, (#val.alts - 1) / 100 }, realearn_alt_idx)
+    for row_idx, row in ipairs(synth_layout) do
+      ---Create a bank that matches the current alt. This is done by assigning one of realearn's params
+      local realearn_prm_row_idx = L:new_param()
+      local cycle_btn = L:create_cycleBtn(row.title, row_idx, { 0, (#row.alts - 1) / 100 }, realearn_prm_row_idx)
 
       table.insert(self.data[self.pageIdx].maps, cycle_btn)
-      for alt_idx, alt in ipairs(val.alts) do
-        local alt_color = val.colors[alt_idx]
-        for col_idx, opt in ipairs(val.opts) do
+      for alt_idx, alt in ipairs(row.alts) do
+        if alt == "LFO" then
+          --[[
+          amt knob gets a modifier button that cycles through the 4 options
+        ]]
+        end
+        local alt_color = row.colors[alt_idx]
+        for col_idx, opt in ipairs(row.opts) do
           local param = createIdleMapping()
           local encoder_idx = (row_idx - 1) * ENCODERS_PER_ROW + (col_idx - 1)
           param.name = alt .. "_" .. opt
@@ -238,152 +305,19 @@ local function LOC(ENCODERS_COUNT)
             send_midi_feedback = {
               {
                 kind = "Raw",
-                message = "B1 " ..
-                    utils.toHex(encoder_idx) .. " " .. alt_color
-
+                message = L:format_color(encoder_idx, alt_color)
               },
             },
           }
-          local bnk_low = (self.pageIdx / 100) - 0.001
-          if bnk_low < 0 then bnk_low = 0 end
-          local bnk_hi = (self.pageIdx / 100) + 0.009
-          local p_idx = "p[" .. 0 .. "]"                    -- which bank/page we're in, synth page is 0
-          local r_alt_idx = "p[" .. realearn_alt_idx .. "]" -- modifier index
-          local alt_idx_val = (alt_idx - 1) / 100
-          local alt_idx_val_low = alt_idx_val == 0 and alt_idx_val or alt_idx_val - 0.001
-          if alt_idx_val_low < 0 then alt_idx_val_low = 0 end
-          local alt_idx_val_hi = alt_idx_val + 0.009
-          -- "p[0] > 0.009 && p[0] < 0.019 && p[1] > 0.009 && p[1] < 0.019"
-          -- the way that's written looks pretty stupid,
-          -- but realearn doesn't read p[0]==0.001 as true: floating point numbers are inaccurate…
-          ---@type string
-          local condition = p_idx .. " >= " ..
-              bnk_low ..
-              " && " ..
-              p_idx ..
-              " < " .. bnk_hi .. " && " .. r_alt_idx .. " >= " .. alt_idx_val_low .. " && " .. r_alt_idx .. " < " ..
-              alt_idx_val_hi
           param.activation_condition = {
             kind = "Expression",
-            condition = condition
+            condition = L:format_condition({ { bnk = 0, modifier = self.pageIdx },
+              { bnk = realearn_prm_row_idx or 0, modifier = alt_idx - 1 } })
           }
           table.insert(self.data[self.pageIdx].maps, param)
         end
       end
     end
-  end
-
-  function L:create_OSC_MOD()
-    local OscOpts = {
-      "Oct", "Fine", "Wave", "Semi",
-    }
-    local OSCs = {
-      {
-        name = "osc1",
-        opts = OscOpts,
-        condition = 0
-      },
-      {
-        name = "osc2",
-        opts = OscOpts,
-        condition = 0.01
-      },
-      {
-        name = "sub",
-        opts = OscOpts,
-        condition = 0.02
-      },
-      {
-        name = "noise",
-        opts = OscOpts,
-        condition = 0.03
-      },
-    }
-    local mod_idx = L:new_param()
-    for i = 1, #OSCs do
-      local bnk_low = (self.pageIdx / 100) - 0.001
-      if bnk_low < 0 then bnk_low = 0 end
-      local bnk_hi = (self.pageIdx / 100) + 0.009
-      local p_idx = "p[" .. 0 .. "]"       -- which bank/page we're in
-      local m_idx = "p[" .. mod_idx .. "]" -- modifier index
-      local m_val = (i - 1) / 100
-      local mVal_low = m_val - 0.001
-      if mVal_low < 0 then mVal_low = 0 end
-      local mVal_hi = m_val + 0.009
-      -- "p[0] > 0.009 && p[0] < 0.019 && p[1] > 0.009 && p[1] < 0.019"
-      -- the way that's written looks pretty stupid,
-      -- but realearn doesn't read p[0]==0.001 as true: floating point numbers are way inaccurate…
-      ---@type string
-      local condition = p_idx .. " >= " ..
-          bnk_low ..
-          " && " .. p_idx .. " < " .. bnk_hi .. " && " .. m_idx .. " >= " .. mVal_low .. " && " .. m_idx .. " < " ..
-          mVal_hi
-      local fx_colour = self:increment_color()
-      local rowLength = 4
-      for j = 1, rowLength do
-        local map = createIdleMapping()
-        map.name = OSCs[i].name .. "_" .. OscOpts[j]
-        map.activation_condition = {
-          kind = "Expression",
-          condition = condition
-        }
-        map.source = {
-          kind = "Virtual",
-          id = j - 1
-        }
-        map.on_activate = {
-          send_midi_feedback = {
-            {
-              kind = "Raw",
-              message = "B1 " ..
-                  utils.toHex(j - 1) .. " " .. fx_colour
-
-            },
-          },
-        }
-
-        -- insert into maps
-        -- replace dummy mapping with new mapping
-        table.insert(self.data[self.pageIdx].maps, map)
-      end
-    end
-    -- add the toggle button
-    local cycle_btn = createIdleMapping()
-    cycle_btn.feedback_enabled = false
-    cycle_btn.name = "osc_cycle"
-    cycle_btn.activation_condition = {
-      kind = "Expression",
-      condition = "p[0] >= 0 && p[0] <=0.009" -- put button on first page
-    }
-    cycle_btn.source = {
-      kind = "Virtual",
-      id = 0,
-      character = "Button",
-    }
-    cycle_btn.glue = {
-      absolute_mode = "IncrementalButton",
-      target_interval = { 0, 0.03 },
-      wrap = true,
-      step_size_interval = { 0.01, 0.05 },
-    }
-    cycle_btn.target = {
-      kind = "FxParameterValue",
-      parameter = {
-        address = "ById",
-        index = 1,
-      },
-      poll_for_feedback = false,
-    }
-    cycle_btn.on_activate = {
-      send_midi_feedback = {
-        {
-          kind = "Raw",
-          message = ""
-
-        },
-      },
-    }
-    table.insert(self.data[self.pageIdx].maps, cycle_btn)
   end
 
   function L:find_available_idx()
@@ -460,7 +394,6 @@ function Main_compartment_mapper.Map_selected_fx_in_visible_chain(ENCODERS_COUNT
   local function build()
     local bnks = LOC(ENCODERS_COUNT)
     bnks:create_synth_map()
-    -- bnks:create_OSC_MOD()
     bnks:fill_left_over_space_in_last_bank_with_dummies()
     bnks:add_dummies_page()
     return bnks:get_bnks(), bnks:get_maps()
