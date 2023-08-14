@@ -1,19 +1,34 @@
--- dofile("/home/antoine/Documents/Experiments/lua/debug_connect.lua")
+dofile("/home/antoine/Documents/Experiments/lua/debug_connect.lua")
 -- @noindex
 local utils = require("custom_actions.utils")
 local serpent = require("serpent")
 local REALERN_PARAMS = 100
 ENCODERS_PER_ROW = 4
 local Color_list = {
-  "10", -- cyan
-  "45", -- yellow
-  "03", -- navy
-  "33", -- green
-  "4F", -- red
-  "62", -- ??
-  "65", -- ??
-  "7F", -- ??
-
+  "02", --navy
+  "0F", --skyBlue
+  "19", --turquoise
+  "2E", --oliveGreen
+  "3C", --appleGreen
+  "40", --yellow
+  "49", --orange
+  "56", --red
+  "5A", --pink
+  "6B", --purple
+  "71", --violet
+}
+local Color_enum = {
+  navy = "02",
+  skyBlue = "0F",
+  turquoise = "19",
+  oliveGreen = "2E",
+  appleGreen = "3C",
+  yellow = "40",
+  orange = "49",
+  red = "56",
+  pink = "5A",
+  purple = "6B",
+  violet = "71",
 }
 
 ---Create a «do nothing» mapping, containing a unique ID and the base glue and target sections.
