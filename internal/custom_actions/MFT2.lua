@@ -206,10 +206,18 @@ local function LOC(ENCODERS_COUNT)
 
   function L:create_synth_map()
     local synth_layout = {
-      { title = "OSC",  alts = { "osc1", "osc2", "sub", "noise" },     opts = { "oct", "fine", "wave", "semi" } },
-      { title = "ENV",  alts = { "FILT_ENV", "AMP_ENV", "PITCH_ENV" }, opts = { "A", "D", "S", "R" } },
-      { title = "FILT", alts = { "filt1", "filt2_hp" },                opts = { "cut", "res", "steep", "type" } },
-      { title = "LFO",  alts = { "lfo1", "lfo2" },                     opts = { "rate", "amt", "wave", "dest" } }
+      { title = "OSC",  alts = { "osc1", "osc2", "sub", "noise" },     opts = { "oct", "fine", "wave", "semi" },
+                                                                                                                   colors = {
+          Color_enum.navy, Color_enum.pink, Color_enum.oliveGreen, Color_enum.turquoise } },
+      { title = "ENV",  alts = { "FILT_ENV", "AMP_ENV", "PITCH_ENV" }, opts = { "A", "D", "S", "R" },
+                                                                                                                   colors = {
+          Color_enum.red, Color_enum.yellow, Color_enum.turquoise } },
+      { title = "FILT", alts = { "filt1", "filt2_hp" },                opts = { "cut", "res", "steep", "type" },
+                                                                                                                   colors = {
+          Color_enum.red, Color_enum.purple } },
+      { title = "LFO",  alts = { "lfo1", "lfo2" },                     opts = { "rate", "amt", "wave", "dest" },
+                                                                                                                   colors = {
+          Color_enum.skyBlue, Color_enum.navy } }
     }
     for row_idx, val in ipairs(synth_layout) do
       local realearn_alt_idx = L:new_param()
@@ -217,7 +225,7 @@ local function LOC(ENCODERS_COUNT)
 
       table.insert(self.data[self.pageIdx].maps, cycle_btn)
       for alt_idx, alt in ipairs(val.alts) do
-        local alt_color = L:increment_color()
+        local alt_color = val.colors[alt_idx]
         for col_idx, opt in ipairs(val.opts) do
           local param = createIdleMapping()
           local encoder_idx = (row_idx - 1) * ENCODERS_PER_ROW + (col_idx - 1)
