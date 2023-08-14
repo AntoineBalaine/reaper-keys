@@ -169,9 +169,9 @@ local function LOC(ENCODERS_COUNT)
   end
 
   ---@param mod_name string
-  ---@param row_idx integer -- 0-indexed
+  ---@param encoder_idx integer -- 0-indexed
   ---@param target_interval number[]
-  function L:create_cycleBtn(mod_name, row_idx, target_interval, realearn_alt_idx)
+  function L:create_cycleBtn(mod_name, encoder_idx, target_interval, realearn_param_idx)
     local cycle_btn = createIdleMapping()
     cycle_btn.feedback_enabled = false
     cycle_btn.name = mod_name .. "_cycl"
@@ -184,7 +184,7 @@ local function LOC(ENCODERS_COUNT)
     }
     cycle_btn.source = {
       kind = "Virtual",
-      id = (row_idx - 1) * ENCODERS_PER_ROW,
+      id = encoder_idx,
       character = "Button",
     }
     cycle_btn.glue = {
@@ -197,7 +197,7 @@ local function LOC(ENCODERS_COUNT)
       kind = "FxParameterValue",
       parameter = {
         address = "ById",
-        index = realearn_alt_idx,
+        index = realearn_param_idx,
       },
       poll_for_feedback = false,
     }
@@ -221,14 +221,18 @@ local function LOC(ENCODERS_COUNT)
     return b_idx .. " >= " .. mod_low .. " && " .. b_idx .. " < " .. mod_hi
   end
 
+  ---@class Param_n_modifier
+  ---@field bnk integer
+  ---@field modifier integer
+
   --- `p[0] > 0.009 && p[0] < 0.019 && p[1] > 0.009 && p[1] < 0.019`
   ---
   --- The way that's written looks awkward,
   --- but realearn can't read `p[0]==0.001` as `true`: floating point numbers are inaccurate…
-  ---@param bnk_n_modifier {bnk: integer, modifier: integer}[]
-  function L:format_condition(bnk_n_modifier)
+  ---@param prm_n_modifier Param_n_modifier[]
+  function L:format_condition(prm_n_modifier)
     local expressions = {}
-    for i, v in ipairs(bnk_n_modifier) do
+    for i, v in ipairs(prm_n_modifier) do
       table.insert(expressions, L:format_expression_condition(v.bnk, v.modifier))
     end
     return table.concat(expressions, " && ")
@@ -238,6 +242,49 @@ local function LOC(ENCODERS_COUNT)
   ---@param color string
   function L:format_color(encoder_idx, color)
     return "B1 " .. utils.toHex(encoder_idx) .. " " .. color
+  end
+
+  ---comment
+  ---@param title string
+  ---@param opt string
+  ---@param encoder_idx integer
+  ---@param alt_color string
+  ---@param prm_n_modifier Param_n_modifier[]
+  function L:create_col(title, opt, encoder_idx, alt_color, prm_n_modifier)
+    local param = createIdleMapping()
+    param.name = title .. "_" .. opt
+    param.source = {
+      kind = "Virtual",
+      id = encoder_idx,
+    }
+    param.on_activate = {
+      send_midi_feedback = {
+        {
+          kind = "Raw",
+          message = L:format_color(encoder_idx, alt_color)
+        },
+      },
+    }
+    local conditions_list = { { bnk = 0, modifier = self.pageIdx } }
+    for i, condition in ipairs(prm_n_modifier) do
+      table.insert(conditions_list, { bnk = condition.bnk, modifier = condition.modifier - 1 })
+    end
+    param.activation_condition = {
+      kind = "Expression",
+      condition = L:format_condition(conditions_list)
+    }
+    table.insert(self.data[self.pageIdx].maps, param)
+  end
+
+  ---@param dest "filt1_cut" | "amp" | "pitch" | "filt2_cut"
+  function L:lfo_dest_color(dest)
+    local opts = {
+      filt1_cut = Color_enum.red,
+      amp = Color_enum.yellow,
+      pitch = Color_enum.turquoise,
+      filt2_cut = Color_enum.purple,
+    }
+    return opts[dest]
   end
 
   function L:create_synth_map()
@@ -282,39 +329,34 @@ local function LOC(ENCODERS_COUNT)
     }
     for row_idx, row in ipairs(synth_layout) do
       ---Create a bank that matches the current alt. This is done by assigning one of realearn's params
-      local realearn_prm_row_idx = L:new_param()
-      local cycle_btn = L:create_cycleBtn(row.title, row_idx, { 0, (#row.alts - 1) / 100 }, realearn_prm_row_idx)
+      local row_param = L:new_param() or -1
+      local cycle_btn = L:create_cycleBtn(row.title, (row_idx - 1) * ENCODERS_PER_ROW, { 0, (#row.alts - 1) / 100 },
+        row_param)
 
       table.insert(self.data[self.pageIdx].maps, cycle_btn)
       for alt_idx, alt in ipairs(row.alts) do
-        if alt == "LFO" then
-          --[[
-          amt knob gets a modifier button that cycles through the 4 options
-        ]]
-        end
         local alt_color = row.colors[alt_idx]
         for col_idx, opt in ipairs(row.opts) do
-          local param = createIdleMapping()
           local encoder_idx = (row_idx - 1) * ENCODERS_PER_ROW + (col_idx - 1)
-          param.name = alt .. "_" .. opt
-          param.source = {
-            kind = "Virtual",
-            id = encoder_idx,
-          }
-          param.on_activate = {
-            send_midi_feedback = {
-              {
-                kind = "Raw",
-                message = L:format_color(encoder_idx, alt_color)
-              },
-            },
-          }
-          param.activation_condition = {
-            kind = "Expression",
-            condition = L:format_condition({ { bnk = 0, modifier = self.pageIdx },
-              { bnk = realearn_prm_row_idx or 0, modifier = alt_idx - 1 } })
-          }
-          table.insert(self.data[self.pageIdx].maps, param)
+          if row.title == "LFO" and opt == "amt" then
+            ---amt knob gets a modifier button that cycles through the 4 options
+
+            local destination_param = L:new_param() or -1
+            local destination_cycle_btn = L:create_cycleBtn("dest", encoder_idx, { 0, (#row.amt.opts - 1) / 100 },
+              destination_param)
+            table.insert(self.data[self.pageIdx].maps, destination_cycle_btn)
+            -- create a alts for each destination
+            for amt_opt_idx, amt_opt in ipairs(row.amt.opts) do
+              local conditions_list = {
+                { bnk = row_param,         modifier = alt_idx },
+                { bnk = destination_param, modifier = amt_opt_idx }
+              }
+              L:create_col(alt, "amt_" .. amt_opt, encoder_idx, L:lfo_dest_color(amt_opt),
+                conditions_list)
+            end
+          else
+            L:create_col(alt, opt, encoder_idx, alt_color, { { bnk = row_param, modifier = alt_idx } })
+          end
         end
       end
     end
