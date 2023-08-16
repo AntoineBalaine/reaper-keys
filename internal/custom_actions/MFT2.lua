@@ -17,7 +17,9 @@ local Color_list = {
   "6B", --purple
   "71", --violet
 }
+---@enum ColorEnum
 local Color_enum = {
+  blk = "00",
   navy = "02",
   skyBlue = "0F",
   turquoise = "19",
@@ -30,6 +32,65 @@ local Color_enum = {
   purple = "6B",
   violet = "71",
 }
+
+local function createLeftRightBankPagers() ---@return Mapping[]
+  return {
+    {
+      name = "PAGE_LEFT",
+      source = {
+        kind = "Virtual",
+        id = "bank-left",
+        character = "Button",
+      },
+      glue = {
+        absolute_mode = "IncrementalButton",
+        reverse = true,
+        step_size_interval = { 0.01, 0.05 },
+      },
+      target = {
+        track_must_be_selected = true,
+        kind = "FxParameterValue",
+        parameter = {
+          address = "ById",
+          index = 0,
+          chain = {
+            address = "Track",
+            track = {
+              address = "This",
+              track_must_be_selected = true,
+            }
+          },
+        },
+      },
+    },
+    {
+      name = "PAGE_RIGHT",
+      source = {
+        kind = "Virtual",
+        id = "bank-right",
+        character = "Button",
+      },
+      glue = {
+        absolute_mode = "IncrementalButton",
+        step_size_interval = { 0.01, 0.05 },
+      },
+      target = {
+        kind = "FxParameterValue",
+        parameter = {
+          address = "ById",
+          index = 0,
+          chain = {
+            address = "Track",
+            track = {
+              address = "This",
+              track_must_be_selected = true,
+            }
+          },
+        },
+      }
+    }
+  }
+end
 
 ---Create a «do nothing» mapping, containing a unique ID and the base glue and target sections.
 ---@return Mapping
@@ -204,6 +265,35 @@ local function LOC(ENCODERS_COUNT)
     return cycle_btn
   end
 
+  ---@param mod_name string
+  ---@param encoder_idx integer -- 0-indexed
+  ---@param realearn_param_idx integer -- 0-indexed
+  function L:create_toggleBtn(mod_name, encoder_idx, realearn_param_idx)
+    local cycle_btn = createIdleMapping()
+    cycle_btn.feedback_enabled = false
+    cycle_btn.name = mod_name .. "_cycl"
+    local page_idx = ((self.pageIdx / 100) - 0.001)
+    if page_idx < 0 then page_idx = 0 end
+    cycle_btn.feedback_enabled = false
+    cycle_btn.source = {
+      kind = "Virtual",
+      id = encoder_idx,
+    }
+    cycle_btn.glue = {
+      absolute_mode = "ToggleButton",
+      step_size_interval = { 0.01, 0.05 },
+    }
+    cycle_btn.target = {
+      kind = "FxParameterValue",
+      parameter = {
+        address = "ById",
+        index = realearn_param_idx,
+      },
+      poll_for_feedback = false,
+    }
+    return cycle_btn
+  end
+
   function L:format_low_hi(val)
     local low = (val / 100) - 0.001
     if low < 0 then low = 0 end
@@ -244,13 +334,12 @@ local function LOC(ENCODERS_COUNT)
     return "B1 " .. utils.toHex(encoder_idx) .. " " .. color
   end
 
-  ---comment
   ---@param title string
   ---@param opt string
   ---@param encoder_idx integer
   ---@param alt_color string
   ---@param prm_n_modifier Param_n_modifier[]
-  function L:create_col(title, opt, encoder_idx, alt_color, prm_n_modifier)
+  function L:create_encoder(title, opt, encoder_idx, alt_color, prm_n_modifier)
     local param = createIdleMapping()
     param.name = title .. "_" .. opt
     param.source = {
@@ -287,75 +376,234 @@ local function LOC(ENCODERS_COUNT)
     return opts[dest]
   end
 
-  function L:create_synth_map()
-    local synth_layout = {
-      {
-        title = "OSC",
-        alts = { "osc1", "osc2", "sub", "noise" },
-        opts = { "oct", "fine", "wave", "volume" },
-        colors = {
-          Color_enum.navy, Color_enum.yellow, Color_enum.oliveGreen, Color_enum.turquoise },
-        noise = {
-          opts = { "white", "pink" },
-          colors = {
-            Color_enum.turquoise, Color_enum.pink }
-        }
+  ---@class MapLayout
+  ---@field title string
+  ---@field alts string[]
+  ---@field Options? Option[]
+  ---@field colors string[]
+
+  ---@enum Types
+  local types = {
+    clk = "clk",
+    dbl_clk = "dbl_clk",
+    hold = "hold",
+  }
+
+  ---@class MapButtons
+  ---@field type Types
+  ---@field colors? ColorEnum[]
+  ---@field title? string
+  ---@field opts? string[]
+
+
+  ---@type MapLayout[]
+  L.fx_layout = {
+    {
+      title = "FX1",
+      alts = { "dist" },
+      Options = {
+        { name = "drive" },
+        { name = "-" },
+        { name = "-" },
+        {
+          name = "-",
+          clk = { name = "Bypass", type = "toggle" },
+          hold = { name = "dry/wet", colors = Color_enum.blk }
+        },
       },
-      {
-        title = "ENV",
-        alts = { "FILT_ENV", "AMP_ENV", "PITCH_ENV" },
-        opts = { "A", "D", "S", "R" },
-        colors = {
-          Color_enum.red, Color_enum.yellow, Color_enum.turquoise }
-      },
-      {
-        title = "FILT",
-        alts = { "filt1", "filt2_hp" },
-        opts = { "cut", "res", "steep", "type" },
-        colors = {
-          Color_enum.red, Color_enum.purple }
-      },
-      {
-        title = "LFO",
-        alts = { "lfo1", "lfo2" },
-        opts = { "rate", "amt", "wave", "nothg_yet" },
-        colors = { Color_enum.skyBlue, Color_enum.navy },
-        amt = {
-          colors = {
-            Color_enum.red, Color_enum.yellow, Color_enum.turquoise, Color_enum.purple },
-          opts = { "filt1_cut", "amp", "pitch", "filt2_cut" }
-        }
-      }
+      colors = {
+        Color_enum.orange },
+      encoder4 = L.FX_encoder4,
+    },
+    {
+      title = "FX2",
+      alts = { "chorus" },
+      Options = {
+        { name = "rate" },
+        { name = "Dly1" },
+        { name = "Dly2" },
+        {
+          name = "Depth",
+          clk = { name = "Bypass", type = "toggle" },
+          hold = {
+            name = "dry/wet",
+            colors = Color_enum.blk
+          }
+        }, },
+      colors = {
+        Color_enum.skyBlue },
+      encoder4 = L.FX_encoder4,
+    },
+    {
+      title = "FX3",
+      alts = { "Delay" },
+      Options = {
+        { name = "Fdbk" },
+        { name = "Time" },
+        { name = "-" },
+        {
+          name = "-",
+          clk = { name = "Bypass", type = "toggle" },
+          hold = { name = "dry/wet", colors = Color_enum.blk }
+        }, },
+      colors = {
+        Color_enum.skyBlue },
+      encoder4 = L.FX_encoder4,
+    },
+    {
+      title = "FX4",
+      alts = { "Rvb" },
+      Options = {
+        { name = "Size" },
+        { name = "Decay" },
+        { name = "LoCut" },
+        {
+          name = "HiCut",
+          clk = { name = "Bypass", type = "toggle" },
+          hold = { name = "dry/wet", colors = Color_enum.blk }
+        }, },
+      colors = {
+        Color_enum.oliveGreen },
+      encoder4 = L.FX_encoder4,
     }
-    for row_idx, row in ipairs(synth_layout) do
+  }
+
+  ---@class ClkAlt
+  ---@field name string
+  ---@field color string
+
+  ---@class Option
+  ---@field name string
+  ---@field dbl_clk? {name: string, color: string}
+  ---@field clk?  {name: string, type: "alt" | "toggle" | "hold", alts?: ClkAlt[]}
+  ---@field hold? string[]
+
+  ---@type MapLayout[]
+  L.synth_layout = {
+    {
+      title = "OSC",
+      alts = { "oscA", "oscB", "sub", "noise" },
+      colors = {
+        Color_enum.navy, Color_enum.yellow, Color_enum.oliveGreen, Color_enum.turquoise },
+      volume = {
+        send_to_filter = false
+      },
+      Options = {
+        { name = "oct", },
+        { name = "coarse", },
+        { name = "wave", },
+        { name = "volume", },
+      },
+    },
+    {
+      title = "FILT",
+      alts = { "filt1", "filt2_hp" },
+      Options = {
+        { name = "cut", },
+        { name = "res", },
+        { name = "type", },
+        { name = "drive", },
+      },
+      colors = {
+        Color_enum.red, Color_enum.purple },
+      drive = {
+        keytrack = false
+      }
+    },
+    {
+      title = "ENV",
+      alts = { "FILT_ENV", "AMP_ENV", "PITCH_ENV" },
+      Options = {
+        { name = "A", },
+        { name = "D", },
+        { name = "S", },
+        {
+          name = "R",
+          clk = {
+            name = "polarity",
+            type = "toggle",
+          },
+          hold = { name = "envelope_amount" }
+        },
+      },
+      colors = { Color_enum.red, Color_enum.yellow, Color_enum.turquoise },
+    },
+    {
+      title = "LFO",
+      alts = { "lfo1", "lfo2" },
+      Options = {
+        { name = "wave" },
+        { name = "rate", dbl_clk = { name = "bpm_sync", type = "toggle" } },
+        { name = "-",    dbl_clk = { name = "polarity", type = "toggle" } },
+        {
+          name = "amt",
+          clk = {
+            name = "dest",
+            type = "alt",
+            alts = {
+              { name = "filt1_cut", color = Color_enum.red, },
+              { name = "amp",       color = Color_enum.yellow, },
+              { name = "pitch",     color = Color_enum.turquoise, },
+              { name = "filt2_cut", color = Color_enum.purple, },
+            }
+          }
+        },
+      },
+      colors = { Color_enum.skyBlue, Color_enum.navy },
+      amt = {
+        colors = {
+          Color_enum.red, Color_enum.yellow, Color_enum.turquoise, Color_enum.purple },
+        opts = { "filt1_cut", "amp", "pitch", "filt2_cut" }
+      },
+    }
+  }
+
+  ---comment
+  ---@param encoder_idx integer
+  ---@param clk_alts ClkAlt[]
+  ---@param alt_idx integer
+  ---@param row_param integer
+  ---@param ALT string
+  function L:create_encoder_cycler(encoder_idx, clk_alts, alt_idx, row_param, ALT, opt_name)
+    local destination_param = L:new_param() or -1
+    local destination_cycle_btn = L:create_cycleBtn(opt_name, encoder_idx, { 0, (#clk_alts - 1) / 100 },
+      destination_param)
+    table.insert(self.data[self.pageIdx].maps, destination_cycle_btn)
+
+    -- create alts for each destination tb cycled
+    for opt_idx, clk_alt in ipairs(clk_alts) do
+      local conditions_list = {
+        { bnk = row_param,         modifier = alt_idx },
+        { bnk = destination_param, modifier = opt_idx }
+      }
+      L:create_encoder(ALT, clk_alt.name, encoder_idx, clk_alt.color,
+        conditions_list)
+    end
+  end
+
+  ---@param layout MapLayout[]
+  function L:create_map(layout)
+    for row_idx, row in ipairs(layout) do
       ---Create a bank that matches the current alt. This is done by assigning one of realearn's params
       local row_param = L:new_param() or -1
       local cycle_btn = L:create_cycleBtn(row.title, (row_idx - 1) * ENCODERS_PER_ROW, { 0, (#row.alts - 1) / 100 },
         row_param)
 
       table.insert(self.data[self.pageIdx].maps, cycle_btn)
-      for alt_idx, alt in ipairs(row.alts) do
+      for alt_idx, ALT in ipairs(row.alts) do
         local alt_color = row.colors[alt_idx]
-        for col_idx, opt in ipairs(row.opts) do
+        for col_idx, OPT in ipairs(row.Options) do
           local encoder_idx = (row_idx - 1) * ENCODERS_PER_ROW + (col_idx - 1)
-          if row.title == "LFO" and opt == "amt" then
-            ---amt knob gets a modifier button that cycles through the 4 options
 
-            local destination_param = L:new_param() or -1
-            local destination_cycle_btn = L:create_cycleBtn("dest", encoder_idx, { 0, (#row.amt.opts - 1) / 100 },
-              destination_param)
-            table.insert(self.data[self.pageIdx].maps, destination_cycle_btn)
-            -- create a alts for each destination
-            for amt_opt_idx, amt_opt in ipairs(row.amt.opts) do
-              local conditions_list = {
-                { bnk = row_param,         modifier = alt_idx },
-                { bnk = destination_param, modifier = amt_opt_idx }
-              }
-              L:create_col(alt, "amt_" .. amt_opt, encoder_idx, L:lfo_dest_color(amt_opt),
-                conditions_list)
+          if OPT.clk then
+            if OPT.clk.type == "alt" then
+              L:create_encoder_cycler(encoder_idx, OPT.clk.alts, alt_idx, row_param, ALT, OPT.name)
+            elseif OPT.clk.type == "toggle" then
+              ---TODO also create the toggle button
+              L:create_encoder(ALT, OPT.name, encoder_idx, alt_color, { { bnk = row_param, modifier = alt_idx } })
             end
           else
-            L:create_col(alt, opt, encoder_idx, alt_color, { { bnk = row_param, modifier = alt_idx } })
+            L:create_encoder(ALT, OPT.name, encoder_idx, alt_color, { { bnk = row_param, modifier = alt_idx } })
           end
         end
       end
@@ -435,13 +683,16 @@ function Main_compartment_mapper.Map_selected_fx_in_visible_chain(ENCODERS_COUNT
   ---@return Mapping[] fx
   local function build()
     local bnks = LOC(ENCODERS_COUNT)
-    bnks:create_synth_map()
+    bnks:create_map(bnks.synth_layout)
+    bnks:new_page()
+    bnks:create_map(bnks.fx_layout)
     bnks:fill_left_over_space_in_last_bank_with_dummies()
     bnks:add_dummies_page()
     return bnks:get_bnks(), bnks:get_maps()
   end
 
   local bnks, maps = build()
+  local pagers = createLeftRightBankPagers()
 
   ---All controller mappings here.
   ---Bank selectors and bank mappings all go together.
@@ -451,7 +702,7 @@ function Main_compartment_mapper.Map_selected_fx_in_visible_chain(ENCODERS_COUNT
     value = {
       groups = bnks,
       mappings = utils.TableConcat(
-      -- pagers,
+        pagers,
         maps
       ),
     },
