@@ -1,4 +1,4 @@
--- dofile("/home/antoine/Documents/Experiments/lua/debug_connect.lua")
+dofile("/home/antoine/Documents/Experiments/lua/debug_connect.lua")
 -- @noindex
 local utils = require("custom_actions.utils")
 local serpent = require("serpent")
@@ -231,7 +231,55 @@ local function LOC(ENCODERS_COUNT)
 
   ---@param mod_name string
   ---@param encoder_idx integer -- 0-indexed
+  ---@param cond_list Param_n_modifier[]
+  function L:create_toggle_Btn(mod_name, encoder_idx, cond_list)
+    local toggle_btn = createIdleMapping()
+    toggle_btn.feedback_enabled = false
+    toggle_btn.name = mod_name .. "_tgl"
+    local page_idx = ((self.pageIdx / 100) - 0.001)
+    if page_idx < 0 then page_idx = 0 end
+    toggle_btn.source = {
+      kind = "Virtual",
+      id = encoder_idx,
+      character = "Button",
+    }
+    toggle_btn.glue = {
+      absolute_mode = "ToggleButton",
+      -- wrap = true,
+      step_size_interval = { 0.01, 0.05 },
+    }
+    local conditions_list = { { bnk = 0, modifier = self.pageIdx } }
+    for i, condition in ipairs(cond_list) do
+      table.insert(conditions_list, { bnk = condition.bnk, modifier = condition.modifier - 1 })
+    end
+    toggle_btn.activation_condition = {
+      kind = "Expression",
+      condition = L:format_condition(conditions_list)
+    }
+    table.insert(self.data[self.pageIdx].maps, toggle_btn)
+    --[[
+deux boutons: un qui controle l'effet et un qui controle le param qui déclenche le fdb de l'encodeur.
+est-ce possible d'en avoir un seul pour les deux?
+    ]]
+    local toggle_param = L:new_param()
+    local btn2 = utils.deepcopy(toggle_btn)
+    btn2.id = utils.uuid()
+    btn2.target = {
+      kind = "FxParameterValue",
+      parameter = {
+        address = "ById",
+        index = toggle_param,
+      },
+      poll_for_feedback = false,
+    }
+    table.insert(self.data[self.pageIdx].maps, btn2)
+    return toggle_param or -1
+  end
+
+  ---@param mod_name string
+  ---@param encoder_idx integer -- 0-indexed
   ---@param target_interval number[]
+  ---@param realearn_param_idx number
   function L:create_cycleBtn(mod_name, encoder_idx, target_interval, realearn_param_idx)
     local cycle_btn = createIdleMapping()
     cycle_btn.feedback_enabled = false
@@ -253,35 +301,7 @@ local function LOC(ENCODERS_COUNT)
       target_interval = target_interval,
       wrap = true,
       step_size_interval = { 0.01, 0.05 },
-    }
-    cycle_btn.target = {
-      kind = "FxParameterValue",
-      parameter = {
-        address = "ById",
-        index = realearn_param_idx,
-      },
-      poll_for_feedback = false,
-    }
-    return cycle_btn
-  end
-
-  ---@param mod_name string
-  ---@param encoder_idx integer -- 0-indexed
-  ---@param realearn_param_idx integer -- 0-indexed
-  function L:create_toggleBtn(mod_name, encoder_idx, realearn_param_idx)
-    local cycle_btn = createIdleMapping()
-    cycle_btn.feedback_enabled = false
-    cycle_btn.name = mod_name .. "_cycl"
-    local page_idx = ((self.pageIdx / 100) - 0.001)
-    if page_idx < 0 then page_idx = 0 end
-    cycle_btn.feedback_enabled = false
-    cycle_btn.source = {
-      kind = "Virtual",
-      id = encoder_idx,
-    }
-    cycle_btn.glue = {
-      absolute_mode = "ToggleButton",
-      step_size_interval = { 0.01, 0.05 },
+      -- source_interval = { 0, 0 },
     }
     cycle_btn.target = {
       kind = "FxParameterValue",
@@ -593,9 +613,6 @@ local function LOC(ENCODERS_COUNT)
       id = encoder_idx,
       -- character = "Button",
     }
-    --[[     idle_btn.glue = {
-      source_interval = { 0, 0 },
-    } ]]
     idle_btn.on_activate = {
       send_midi_feedback = {
         {
@@ -639,7 +656,10 @@ local function LOC(ENCODERS_COUNT)
               L:create_encoder_cycler(encoder_idx, OPT.clk.alts, alt_idx, row_param, ALT, OPT.name)
             elseif OPT.clk.type == "toggle" then
               ---TODO also create the toggle button
-              L:create_encoder(ALT, OPT.name, encoder_idx, alt_color, { { bnk = row_param, modifier = alt_idx } })
+              local toggle_param = L:create_toggle_Btn(ALT, encoder_idx, { { bnk = row_param, modifier = alt_idx } })
+              L:create_encoder(ALT, OPT.name, encoder_idx, alt_color,
+                { { bnk = row_param, modifier = alt_idx }, { bnk = toggle_param, modifier = 1 }, }
+              )
             end
           else
             L:create_encoder(ALT, OPT.name, encoder_idx, alt_color, { { bnk = row_param, modifier = alt_idx } },

@@ -370,4 +370,20 @@ function utils.uuid()
 	end)
 end
 
+---@param t unknown
+function utils.deepcopy(t)
+	local t_type = type(t)
+	local retval
+	if t_type == 'table' then
+		retval = {}
+		for t, n in next, t, nil do
+			retval[utils.deepcopy(t)] = utils.deepcopy(n)
+		end
+		setmetatable(retval, utils.deepcopy(getmetatable(t)))
+	else
+		retval = t
+	end
+	return retval
+end
+
 return utils
