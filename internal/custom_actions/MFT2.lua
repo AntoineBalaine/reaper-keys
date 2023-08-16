@@ -447,7 +447,7 @@ local function LOC(ENCODERS_COUNT)
           hold = { name = "dry/wet", colors = Color_enum.blk }
         }, },
       colors = {
-        Color_enum.skyBlue },
+        Color_enum.purple },
       encoder4 = L.FX_encoder4,
     },
     {
@@ -523,7 +523,7 @@ local function LOC(ENCODERS_COUNT)
             name = "polarity",
             type = "toggle",
           },
-          hold = { name = "envelope_amount" }
+          hold = { name = "env_amt" }
         },
       },
       colors = { Color_enum.red, Color_enum.yellow, Color_enum.turquoise },
@@ -550,11 +550,6 @@ local function LOC(ENCODERS_COUNT)
         },
       },
       colors = { Color_enum.skyBlue, Color_enum.navy },
-      amt = {
-        colors = {
-          Color_enum.red, Color_enum.yellow, Color_enum.turquoise, Color_enum.purple },
-        opts = { "filt1_cut", "amp", "pitch", "filt2_cut" }
-      },
     }
   }
 
@@ -594,6 +589,10 @@ local function LOC(ENCODERS_COUNT)
         local alt_color = row.colors[alt_idx]
         for col_idx, OPT in ipairs(row.Options) do
           local encoder_idx = (row_idx - 1) * ENCODERS_PER_ROW + (col_idx - 1)
+          -- if you want to light up only color of encoder corresponding to alt index, then
+          -- create a seriesof 4 btns for each alt in each row (if alt is not a toggle)
+          -- if col_idx == alt_idx then btn gets to turn on its color
+          -- other btns are in black
 
           if OPT.clk then
             if OPT.clk.type == "alt" then
