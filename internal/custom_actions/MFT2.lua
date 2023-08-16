@@ -1,4 +1,4 @@
-dofile("/home/antoine/Documents/Experiments/lua/debug_connect.lua")
+-- dofile("/home/antoine/Documents/Experiments/lua/debug_connect.lua")
 -- @noindex
 local utils = require("custom_actions.utils")
 local serpent = require("serpent")
@@ -229,10 +229,95 @@ local function LOC(ENCODERS_COUNT)
     end
   end
 
+  local hold_btn = {
+    id = "HYxceQYbxZ3WZVlYeresV",
+    name = "holdtrig",
+    group = "e071fdcad117434eb69b8",
+    activation_condition = {
+      kind = "Bank",
+      parameter = 0,
+      bank_index = 0,
+    },
+    on_activate = {
+      send_midi_feedback = {
+        {
+          kind = "Raw",
+          message = "B1 05 00",
+        },
+      },
+    },
+    source = {
+      kind = "Virtual",
+      id = 3,
+      character = "Button",
+    },
+    glue = {
+      wrap = true,
+      step_size_interval = { 0.01, 0.05 },
+    },
+    target = {
+      kind = "FxParameterValue",
+      parameter = {
+        address = "ById",
+        fx = {
+          address = "ById",
+          chain = {
+            address = "Track",
+            track = {
+              address = "This",
+              track_must_be_selected = true,
+            },
+          },
+          id = "C88117CB-EB06-2FD1-D59E-2B4976B27637",
+        },
+        index = 9,
+      },
+      poll_for_feedback = false,
+    },
+  }
+
   ---@param mod_name string
   ---@param encoder_idx integer -- 0-indexed
   ---@param cond_list Param_n_modifier[]
-  function L:create_toggle_Btn(mod_name, encoder_idx, cond_list)
+  function L:create_hold_Btn(mod_name, encoder_idx, cond_list)
+    local toggle_btn = createIdleMapping()
+    toggle_btn.feedback_enabled = false
+    toggle_btn.name = mod_name .. "_tgl"
+    local page_idx = ((self.pageIdx / 100) - 0.001)
+    if page_idx < 0 then page_idx = 0 end
+    toggle_btn.source = {
+      kind = "Virtual",
+      id = encoder_idx,
+      character = "Button",
+    }
+
+    local conditions_list = { { bnk = 0, modifier = self.pageIdx } }
+    for i, condition in ipairs(cond_list) do
+      table.insert(conditions_list, { bnk = condition.bnk, modifier = condition.modifier - 1 })
+    end
+    toggle_btn.activation_condition = {
+      kind = "Expression",
+      condition = L:format_condition(conditions_list)
+    }
+    local toggle_param = L:new_param() or -1
+    toggle_btn.target = {
+      kind = "FxParameterValue",
+      parameter = {
+        address = "ById",
+        index = toggle_param,
+      },
+      poll_for_feedback = false,
+    }
+
+    table.insert(self.data[self.pageIdx].maps, toggle_btn)
+    return toggle_param
+  end
+
+  ---@param mod_name string
+  ---@param encoder_idx integer -- 0-indexed
+  ---@param cond_list Param_n_modifier[]
+  ---@param dbl_clk? boolean
+  function L:create_toggle_Btn(mod_name, encoder_idx, cond_list, dbl_clk)
     local toggle_btn = createIdleMapping()
     toggle_btn.feedback_enabled = false
     toggle_btn.name = mod_name .. "_tgl"
@@ -248,6 +333,7 @@ local function LOC(ENCODERS_COUNT)
       -- wrap = true,
       step_size_interval = { 0.01, 0.05 },
     }
+
     local conditions_list = { { bnk = 0, modifier = self.pageIdx } }
     for i, condition in ipairs(cond_list) do
       table.insert(conditions_list, { bnk = condition.bnk, modifier = condition.modifier - 1 })
@@ -256,6 +342,11 @@ local function LOC(ENCODERS_COUNT)
       kind = "Expression",
       condition = L:format_condition(conditions_list)
     }
+    if dbl_clk then
+      toggle_btn.glue.fire_mode = {
+        kind = "OnDoublePress",
+      }
+    end
     table.insert(self.data[self.pageIdx].maps, toggle_btn)
     --[[
 deux boutons: un qui controle l'effet et un qui controle le param qui déclenche le fdb de l'encodeur.
@@ -272,6 +363,7 @@ est-ce possible d'en avoir un seul pour les deux?
       },
       poll_for_feedback = false,
     }
+
     table.insert(self.data[self.pageIdx].maps, btn2)
     return toggle_param or -1
   end
@@ -431,7 +523,7 @@ est-ce possible d'en avoir un seul pour les deux?
         { name = "-" },
         {
           name = "-",
-          clk = { name = "Bypass", type = "toggle" },
+          dbl_clk = { name = "Bypass", type = "toggle" },
           hold = { name = "dry/wet", colors = Color_enum.blk }
         },
       },
@@ -448,7 +540,7 @@ est-ce possible d'en avoir un seul pour les deux?
         { name = "Dly2" },
         {
           name = "Depth",
-          clk = { name = "Bypass", type = "toggle" },
+          dbl_clk = { name = "Bypass", type = "toggle" },
           hold = {
             name = "dry/wet",
             colors = Color_enum.blk
@@ -467,7 +559,7 @@ est-ce possible d'en avoir un seul pour les deux?
         { name = "-" },
         {
           name = "-",
-          clk = { name = "Bypass", type = "toggle" },
+          dbl_clk = { name = "Bypass", type = "toggle" },
           hold = { name = "dry/wet", colors = Color_enum.blk }
         }, },
       colors = {
@@ -483,7 +575,7 @@ est-ce possible d'en avoir un seul pour les deux?
         { name = "LoCut" },
         {
           name = "HiCut",
-          clk = { name = "Bypass", type = "toggle" },
+          dbl_clk = { name = "Bypass", type = "toggle" },
           hold = { name = "dry/wet", colors = Color_enum.blk }
         }, },
       colors = {
@@ -498,7 +590,7 @@ est-ce possible d'en avoir un seul pour les deux?
 
   ---@class Option
   ---@field name string
-  ---@field dbl_clk? {name: string, color: string}
+  ---@field dbl_clk? {name: string, type: "alt" | "toggle" | "hold", alts?: ClkAlt[]}
   ---@field clk?  {name: string, type: "alt" | "toggle" | "hold", alts?: ClkAlt[]}
   ---@field hold? string[]
 
@@ -657,6 +749,21 @@ est-ce possible d'en avoir un seul pour les deux?
             elseif OPT.clk.type == "toggle" then
               ---TODO also create the toggle button
               local toggle_param = L:create_toggle_Btn(ALT, encoder_idx, { { bnk = row_param, modifier = alt_idx } })
+              L:create_encoder(ALT, OPT.name, encoder_idx, alt_color,
+                { { bnk = row_param, modifier = alt_idx }, { bnk = toggle_param, modifier = 1 }, }
+              )
+            end
+            --[[           elseif OPT.hold then
+            local toggle_param = L:create_hold_Btn(ALT, encoder_idx, { { bnk = row_param, modifier = alt_idx } })
+            L:create_encoder(ALT, OPT.name, encoder_idx, alt_color,
+              { { bnk = row_param, modifier = alt_idx }, { bnk = toggle_param, modifier = 100 }, }
+            ) ]]
+          elseif OPT.dbl_clk then
+            if OPT.dbl_clk.type == "toggle" then
+              ---TODO also create the toggle button
+              local toggle_param = L:create_toggle_Btn(ALT, encoder_idx, { { bnk = row_param, modifier = alt_idx } },
+                true
+              )
               L:create_encoder(ALT, OPT.name, encoder_idx, alt_color,
                 { { bnk = row_param, modifier = alt_idx }, { bnk = toggle_param, modifier = 1 }, }
               )
