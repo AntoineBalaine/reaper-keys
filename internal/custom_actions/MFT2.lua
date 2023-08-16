@@ -280,37 +280,36 @@ local function LOC(ENCODERS_COUNT)
   ---@param encoder_idx integer -- 0-indexed
   ---@param cond_list Param_n_modifier[]
   function L:create_hold_Btn(mod_name, encoder_idx, cond_list)
-    local toggle_btn = createIdleMapping()
-    toggle_btn.feedback_enabled = false
-    toggle_btn.name = mod_name .. "_tgl"
+    local hold_btn = createIdleMapping()
+    hold_btn.feedback_enabled = false
+    hold_btn.name = mod_name .. "_hld"
     local page_idx = ((self.pageIdx / 100) - 0.001)
     if page_idx < 0 then page_idx = 0 end
-    toggle_btn.source = {
+    hold_btn.source = {
       kind = "Virtual",
       id = encoder_idx,
       character = "Button",
     }
-
     local conditions_list = { { bnk = 0, modifier = self.pageIdx } }
     for i, condition in ipairs(cond_list) do
       table.insert(conditions_list, { bnk = condition.bnk, modifier = condition.modifier - 1 })
     end
-    toggle_btn.activation_condition = {
+    hold_btn.activation_condition = {
       kind = "Expression",
       condition = L:format_condition(conditions_list)
     }
-    local toggle_param = L:new_param() or -1
-    toggle_btn.target = {
+    local hold_param = L:new_param() or -1
+    hold_btn.target = {
       kind = "FxParameterValue",
       parameter = {
         address = "ById",
-        index = toggle_param,
+        index = hold_param,
       },
       poll_for_feedback = false,
     }
 
-    table.insert(self.data[self.pageIdx].maps, toggle_btn)
-    return toggle_param
+    table.insert(self.data[self.pageIdx].maps, hold_btn)
+    return hold_param
   end
 
   ---@param mod_name string
@@ -592,7 +591,7 @@ est-ce possible d'en avoir un seul pour les deux?
   ---@field name string
   ---@field dbl_clk? {name: string, type: "alt" | "toggle" | "hold", alts?: ClkAlt[]}
   ---@field clk?  {name: string, type: "alt" | "toggle" | "hold", alts?: ClkAlt[]}
-  ---@field hold? string[]
+  ---@field hold? {name : string}
 
   ---@type MapLayout[]
   L.synth_layout = {
@@ -743,6 +742,12 @@ est-ce possible d'en avoir un seul pour les deux?
           -- create a seriesof 4 btns for each alt in each row (if alt is not a toggle)
           -- if col_idx == alt_idx then btn gets to turn on its color
           -- other btns are in black
+          if OPT.hold then
+            local toggle_param = L:create_hold_Btn(ALT, encoder_idx, { { bnk = row_param, modifier = alt_idx } })
+            L:create_encoder(ALT, OPT.hold.name, encoder_idx, alt_color,
+              { { bnk = row_param, modifier = alt_idx }, { bnk = toggle_param, modifier = 101 }, }
+            )
+          end
           if OPT.clk then
             if OPT.clk.type == "alt" then
               L:create_encoder_cycler(encoder_idx, OPT.clk.alts, alt_idx, row_param, ALT, OPT.name)
@@ -753,11 +758,6 @@ est-ce possible d'en avoir un seul pour les deux?
                 { { bnk = row_param, modifier = alt_idx }, { bnk = toggle_param, modifier = 1 }, }
               )
             end
-            --[[           elseif OPT.hold then
-            local toggle_param = L:create_hold_Btn(ALT, encoder_idx, { { bnk = row_param, modifier = alt_idx } })
-            L:create_encoder(ALT, OPT.name, encoder_idx, alt_color,
-              { { bnk = row_param, modifier = alt_idx }, { bnk = toggle_param, modifier = 100 }, }
-            ) ]]
           elseif OPT.dbl_clk then
             if OPT.dbl_clk.type == "toggle" then
               ---TODO also create the toggle button
