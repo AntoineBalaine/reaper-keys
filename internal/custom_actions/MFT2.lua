@@ -1,4 +1,4 @@
-dofile("/home/antoine/Documents/Experiments/lua/debug_connect.lua")
+-- dofile("/home/antoine/Documents/Experiments/lua/debug_connect.lua")
 -- @noindex
 local utils = require("custom_actions.utils")
 local serpent = require("serpent")
@@ -339,21 +339,25 @@ local function LOC(ENCODERS_COUNT)
   ---@param encoder_idx integer
   ---@param alt_color string
   ---@param prm_n_modifier Param_n_modifier[]
-  function L:create_encoder(title, opt, encoder_idx, alt_color, prm_n_modifier)
+  ---@param use_color? boolean
+  function L:create_encoder(title, opt, encoder_idx, alt_color, prm_n_modifier, use_color)
     local param = createIdleMapping()
     param.name = title .. "_" .. opt
     param.source = {
       kind = "Virtual",
       id = encoder_idx,
     }
-    param.on_activate = {
-      send_midi_feedback = {
-        {
-          kind = "Raw",
-          message = L:format_color(encoder_idx, alt_color)
+    if use_color == nil or (use_color ~= nil and use_color) then
+      param.on_activate = {
+        send_midi_feedback = {
+          {
+            kind = "Raw",
+            message = L:format_color(encoder_idx, alt_color)
+          },
         },
-      },
-    }
+      }
+    end
+    -- THIS WILL BREAK WHEN BUILD FX MAPS?
     local conditions_list = { { bnk = 0, modifier = self.pageIdx } }
     for i, condition in ipairs(prm_n_modifier) do
       table.insert(conditions_list, { bnk = condition.bnk, modifier = condition.modifier - 1 })
@@ -576,8 +580,45 @@ local function LOC(ENCODERS_COUNT)
     end
   end
 
+  ---@param encoder_idx integer
+  ---@param alt_idx integer
+  ---@param col_idx integer
+  ---@param alt_color string
+  ---@param cond_lst Param_n_modifier[]
+  function L:create_idl_button(encoder_idx, alt_idx, col_idx, alt_color, cond_lst)
+    --create 4 idle buttons
+    local idle_btn = createIdleMapping()
+    idle_btn.source = {
+      kind = "Virtual",
+      id = encoder_idx,
+      -- character = "Button",
+    }
+    --[[     idle_btn.glue = {
+      source_interval = { 0, 0 },
+    } ]]
+    idle_btn.on_activate = {
+      send_midi_feedback = {
+        {
+          kind = "Raw",
+          message = L:format_color(encoder_idx, alt_idx == col_idx and alt_color or Color_enum.blk)
+        },
+      },
+    }
+    local conditions_list = { { bnk = 0, modifier = self.pageIdx } }
+    for i, condition in ipairs(cond_lst) do
+      table.insert(conditions_list, { bnk = condition.bnk, modifier = condition.modifier - 1 })
+    end
+    idle_btn.activation_condition = {
+      kind = "Expression",
+      condition = L:format_condition(conditions_list)
+    }
+
+    table.insert(self.data[self.pageIdx].maps, idle_btn)
+  end
+
   ---@param layout MapLayout[]
-  function L:create_map(layout)
+  ---@param type "fx" | "synth"
+  function L:create_map(layout, type)
     for row_idx, row in ipairs(layout) do
       ---Create a bank that matches the current alt. This is done by assigning one of realearn's params
       local row_param = L:new_param() or -1
@@ -593,7 +634,6 @@ local function LOC(ENCODERS_COUNT)
           -- create a seriesof 4 btns for each alt in each row (if alt is not a toggle)
           -- if col_idx == alt_idx then btn gets to turn on its color
           -- other btns are in black
-
           if OPT.clk then
             if OPT.clk.type == "alt" then
               L:create_encoder_cycler(encoder_idx, OPT.clk.alts, alt_idx, row_param, ALT, OPT.name)
@@ -602,7 +642,12 @@ local function LOC(ENCODERS_COUNT)
               L:create_encoder(ALT, OPT.name, encoder_idx, alt_color, { { bnk = row_param, modifier = alt_idx } })
             end
           else
-            L:create_encoder(ALT, OPT.name, encoder_idx, alt_color, { { bnk = row_param, modifier = alt_idx } })
+            L:create_encoder(ALT, OPT.name, encoder_idx, alt_color, { { bnk = row_param, modifier = alt_idx } },
+              type ~= "synth")
+
+            if type == "synth" then
+              L:create_idl_button(encoder_idx, alt_idx, col_idx, alt_color, { { bnk = row_param, modifier = alt_idx } })
+            end
           end
         end
       end
@@ -682,9 +727,9 @@ function Main_compartment_mapper.Map_selected_fx_in_visible_chain(ENCODERS_COUNT
   ---@return Mapping[] fx
   local function build()
     local bnks = LOC(ENCODERS_COUNT)
-    bnks:create_map(bnks.synth_layout)
+    bnks:create_map(bnks.synth_layout, "synth")
     bnks:new_page()
-    bnks:create_map(bnks.fx_layout)
+    bnks:create_map(bnks.fx_layout, "fx")
     bnks:fill_left_over_space_in_last_bank_with_dummies()
     bnks:add_dummies_page()
     return bnks:get_bnks(), bnks:get_maps()
