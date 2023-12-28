@@ -1,3 +1,7 @@
+# This repo has moved
+This repo has been moved to [my reapack](https://github.com/AntoineBalaine/perken-reaper-scripts/).
+I will no longer be making updates to the project over here.
+
 # Reaper-Keys
 
 <p align="center">
